@@ -12,7 +12,7 @@ This plugin is recommended to be built with Go 1.7.5 which has been fully tested
 
 - Build the source codes to binary:
 ```
-#./build
+#make build-bin
 ```
 - Copy the binary to the CNI folder for the testing:
 ```
