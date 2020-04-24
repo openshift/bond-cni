@@ -1,3 +1,8 @@
+FROM openshift/origin-release:rhel-7-golang-1.12 as rhel7builder
+WORKDIR /go/src/github.com/openshift/bond-cni
+COPY . .
+RUN ./build.sh
+
 FROM openshift/origin-release:rhel-8-golang-1.12 AS builder
 WORKDIR /go/src/github.com/openshift/bond-cni
 COPY . .
@@ -8,4 +13,6 @@ LABEL io.k8s.display-name="bond-cni" \
     io.k8s.description="This is an image containing the bond-cni executable" \
     io.openshift.tags="openshift"
 
-COPY --from=builder /go/src/github.com/openshift/bond-cni/bin/bond /bondcni/bond
+COPY --from=builder /go/src/github.com/openshift/bond-cni/bin/bond /bondcni/bin/bond
+COPY --from=builder /go/src/github.com/openshift/bond-cni/bin/bond /bondcni/rhel8/bin/bond
+COPY --from=rhel7builder /go/src/github.com/openshift/bond-cni/bin/bond /bondcni/rhel7/bin/bond
