@@ -1,9 +1,10 @@
-# github.com/containernetworking/cni v0.0.0-20170705153219-a2da8f8d7fd8
+# github.com/containernetworking/cni v0.8.1
 github.com/containernetworking/cni/pkg/invoke
 github.com/containernetworking/cni/pkg/skel
 github.com/containernetworking/cni/pkg/types
 github.com/containernetworking/cni/pkg/types/020
 github.com/containernetworking/cni/pkg/types/current
+github.com/containernetworking/cni/pkg/utils
 github.com/containernetworking/cni/pkg/version
 # github.com/containernetworking/plugins v0.0.0-20171206172147-03e316b07b52
 github.com/containernetworking/plugins/pkg/ip

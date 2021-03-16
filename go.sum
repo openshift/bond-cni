@@ -1,5 +1,7 @@
 github.com/containernetworking/cni v0.0.0-20170705153219-a2da8f8d7fd8 h1:7OMJ+hKvj7OvdVmvNLdBPnj2iyubkrmtBgGgiA142JI=
 github.com/containernetworking/cni v0.0.0-20170705153219-a2da8f8d7fd8/go.mod h1:LGwApLUm2FpoOfxTDEeq8T9ipbpZ61X79hmU3w8FmsY=
+github.com/containernetworking/cni v0.8.1 h1:7zpDnQ3T3s4ucOuJ/ZCLrYBxzkg0AELFfII3Epo9TmI=
+github.com/containernetworking/cni v0.8.1/go.mod h1:LGwApLUm2FpoOfxTDEeq8T9ipbpZ61X79hmU3w8FmsY=
 github.com/containernetworking/plugins v0.0.0-20171206172147-03e316b07b52 h1:ZFGEC8HT49zBBdS2MqH/SHEsf31WbXKrtCwTXsFcppY=
 github.com/containernetworking/plugins v0.0.0-20171206172147-03e316b07b52/go.mod h1:dagHaAhNjXjT9QYOklkKJDGaQPTg4pf//FrUcJeb7FU=
 github.com/coreos/go-iptables v0.0.0-20170629135519-259c8e6a4275 h1:bFb9rdH7DFDeGP1N+iQXokZsNMb7SNaEIqRG2U1gRzU=
