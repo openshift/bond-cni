@@ -39,9 +39,14 @@ type bondingConfig struct {
 	Name        string                   `json:"ifname"`
 	Mode        string                   `json:"mode"`
 	LinksContNs bool                     `json:"linksInContainer"`
+	FailOverMac int                      `json:"failOverMac"`
 	Miimon      string                   `json:"miimon"`
 	Links       []map[string]interface{} `json:"links"`
 }
+
+var (
+	bondCni = "bond"
+)
 
 func init() {
 	// this ensures that main runs only on main thread (thread group leader).
@@ -56,6 +61,9 @@ func loadConfigFile(bytes []byte) (*bondingConfig, string, error) {
 	if err := json.Unmarshal(bytes, bondConf); err != nil {
 		return nil, "", fmt.Errorf("Failed to load configuration file, error = %+v", err)
 	}
+	if bondConf.IPAM.Type == bondCni {
+		return nil, "", fmt.Errorf("Bond is not a suitable IPAM type")
+	}
 	return bondConf, bondConf.CNIVersion, nil
 }
 
@@ -63,10 +71,14 @@ func loadConfigFile(bytes []byte) (*bondingConfig, string, error) {
 func getLinkObjectsFromConfig(bondConf *bondingConfig, netNsHandle *netlink.Handle) ([]netlink.Link, error) {
 	linkNames := []string{}
 	for _, linkName := range bondConf.Links {
-		linkNames = append(linkNames, linkName["name"].(string))
+		s, ok := linkName["name"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to find link name")
+		}
+		linkNames = append(linkNames, s)
 	}
 	linkObjectsToBond := []netlink.Link{}
-	if len(linkNames) > 1 && len(linkNames) <= 2 { // currently only supporting two links to one bond
+	if len(linkNames) >= 2 { // currently supporting two or more links to one bond
 		for _, linkName := range linkNames {
 			linkObject, err := checkLinkExists(linkName, netNsHandle)
 			if err != nil {
@@ -75,7 +87,7 @@ func getLinkObjectsFromConfig(bondConf *bondingConfig, netNsHandle *netlink.Hand
 			linkObjectsToBond = append(linkObjectsToBond, linkObject)
 		}
 	} else {
-		return nil, fmt.Errorf("Bonding requires exactly two links, we have %+v", len(linkNames))
+		return nil, fmt.Errorf("Bonding requires at least two links, we have %+v", len(linkNames))
 	}
 	return linkObjectsToBond, nil
 }
@@ -90,14 +102,14 @@ func checkLinkExists(linkName string, netNsHandle *netlink.Handle) (netlink.Link
 }
 
 // configure the bonded link & add it using the netNsHandle context to add it to the required namespace. return a bondLinkObj pointer & error
-func createBondedLink(bondName string, bondMode string, bondMiimon string, netNsHandle *netlink.Handle) (*netlink.Bond, error) {
+func createBondedLink(bondName string, bondMode string, bondMiimon string, failOverMac int, netNsHandle *netlink.Handle) (*netlink.Bond, error) {
 	var err error
-
 	bondLinkObj := netlink.NewLinkBond(netlink.NewLinkAttrs())
 	bondModeObj := netlink.StringToBondMode(bondMode)
 	bondLinkObj.Attrs().Name = bondName
 	bondLinkObj.Mode = bondModeObj
 	bondLinkObj.Miimon, err = strconv.Atoi(bondMiimon)
+	bondLinkObj.FailOverMac = netlink.BondFailOverMac(failOverMac)
 
 	if err != nil {
 		return nil, fmt.Errorf("Failed to convert bondMiimon value (%+v) to an int, error: %+v", bondMiimon, err)
@@ -161,7 +173,11 @@ func setLinksinNetNs(bondConf *bondingConfig, nspath string, releaseLinks bool) 
 
 	linkNames := []string{}
 	for _, linkName := range bondConf.Links {
-		linkNames = append(linkNames, linkName["name"].(string))
+		s, ok := linkName["name"].(string)
+		if !ok {
+			return fmt.Errorf("failed to find link name")
+		}
+		linkNames = append(linkNames, s)
 	}
 
 	if netNs, err = ns.GetNS(nspath); err != nil {
@@ -178,7 +194,7 @@ func setLinksinNetNs(bondConf *bondingConfig, nspath string, releaseLinks bool) 
 		}
 	}
 
-	if len(linkNames) > 1 && len(linkNames) <= 2 { // currently only supporting two links to one bond
+	if len(linkNames) >= 2 { // currently supporting two or more links to one bond
 		for _, linkName := range linkNames {
 			// get interface link in the network namespace
 			link, err := netlink.LinkByName(linkName)
@@ -203,7 +219,7 @@ func setLinksinNetNs(bondConf *bondingConfig, nspath string, releaseLinks bool) 
 
 		}
 	} else {
-		return fmt.Errorf("Bonding requires exactly two links, we have %+v", len(linkNames))
+		return fmt.Errorf("Bonding requires at least two links, we have %+v", len(linkNames))
 	}
 
 	return nil
@@ -236,8 +252,10 @@ func createBond(bondConf *bondingConfig, nspath string, ns ns.NetNS) (*current.I
 	if err != nil {
 		return nil, fmt.Errorf("Failed to retrieve link objects from configuration file (%+v), error: %+v", bondConf, err)
 	}
-
-	bondLinkObj, err := createBondedLink(bondConf.Name, bondConf.Mode, bondConf.Miimon, netNsHandle)
+	if bondConf.FailOverMac < 0 || bondConf.FailOverMac > 2 {
+		return nil, fmt.Errorf("FailOverMac mode should be 0, 1 or 2 actual: %+v", bondConf.FailOverMac)
+	}
+	bondLinkObj, err := createBondedLink(bondConf.Name, bondConf.Mode, bondConf.Miimon, bondConf.FailOverMac, netNsHandle)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create bonded link (%+v), error: %+v", bondConf.Name, err)
 	}
@@ -245,6 +263,10 @@ func createBond(bondConf *bondingConfig, nspath string, ns ns.NetNS) (*current.I
 	err = attachLinksToBond(bondLinkObj, linkObjectsToBond, netNsHandle)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to attached links to bond, error: %+v", err)
+	}
+
+	if err := netNsHandle.LinkSetUp(bondLinkObj); err != nil {
+		return nil, fmt.Errorf("Failed to set bond link UP, error: %v", err)
 	}
 
 	bond.Name = bondConf.Name
@@ -284,35 +306,43 @@ func cmdAdd(args *skel.CmdArgs) error {
 		return err
 	}
 
+	result := &current.Result{
+		CNIVersion: cniVersion,
+	}
 	// run the IPAM plugin and get back the config to apply
-	r, err := ipam.ExecAdd(bondConf.IPAM.Type, args.StdinData)
-	if err != nil {
-		return err
-	}
-	// Convert whatever the IPAM result was into the current Result type
-	result, err := current.NewResultFromResult(r)
-	if err != nil {
-		return err
-	}
+	if bondConf.IPAM.Type != "" {
+		r, err := ipam.ExecAdd(bondConf.IPAM.Type, args.StdinData)
+		if err != nil {
+			return err
+		}
+		// Convert whatever the IPAM result was into the current Result type
+		result, err := current.NewResultFromResult(r)
+		if err != nil {
+			return err
+		}
 
-	if len(result.IPs) == 0 {
-		return errors.New("IPAM plugin returned missing IP config")
-	}
-	for _, ipc := range result.IPs {
-		// All addresses belong to the vlan interface
-		ipc.Interface = current.Int(0)
+		if len(result.IPs) == 0 {
+			return errors.New("IPAM plugin returned missing IP config")
+		}
+		for _, ipc := range result.IPs {
+			// All addresses belong to the vlan interface
+			ipc.Interface = current.Int(0)
+		}
+
+		result.Interfaces = []*current.Interface{bondInterface}
+
+		err = netns.Do(func(_ ns.NetNS) error {
+			return ipam.ConfigureIface(bondConf.Name, result)
+		})
+		if err != nil {
+			return err
+		}
+
+		result.DNS = bondConf.DNS
+
 	}
 
 	result.Interfaces = []*current.Interface{bondInterface}
-
-	err = netns.Do(func(_ ns.NetNS) error {
-		return ipam.ConfigureIface(bondConf.Name, result)
-	})
-	if err != nil {
-		return err
-	}
-
-	result.DNS = bondConf.DNS
 
 	return types.PrintResult(result, cniVersion)
 
@@ -326,9 +356,11 @@ func cmdDel(args *skel.CmdArgs) error {
 		return err
 	}
 
-	err = ipam.ExecDel(bondConf.IPAM.Type, args.StdinData)
-	if err != nil {
-		return err
+	if bondConf.IPAM.Type != "" {
+		err = ipam.ExecDel(bondConf.IPAM.Type, args.StdinData)
+		if err != nil {
+			return err
+		}
 	}
 
 	if args.Netns == "" {
@@ -384,7 +416,6 @@ func cmdDel(args *skel.CmdArgs) error {
 
 	return err
 }
-
 func cmdCheck(args *skel.CmdArgs) error {
 	return nil
 }
