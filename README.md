@@ -3,9 +3,10 @@
 - Bonding provides a method for aggregating multiple network interfaces into a single logical &quot;bonded&quot; interface.
 - According to the 802.3ad specification, Linux Bonding drivers provides various flavours of bonded interfaces depending on the mode (bonding policies), such as round robin, active aggregation
 - When Bond CNI is configured as a standalone plugin, interfaces are obtained from the host network namespace. With these physical interfaces a bonded interface is created in the container network namespace.
-- When used with [Multus](https://github.com/intel/multus-cni) users can bond two interfaces that have previously been passed into the container.
-- A major use case for bonding in containers is network redundancy of an application in the case of network device or path failure and unavailability. For more information - refer to [network redundancy using interface bonding](https://www.howtoforge.com/tutorial/how-to-configure-high-availability-and-network-bonding-on-linux/)
-- And for more information on the bonding driver please refer to [kernel doc](https://www.kernel.org/doc/Documentation/networking/bonding.txt)
+- When used with [Multus](https://github.com/intel/multus-cni), users can bond two interfaces that have previously been passed into the container.
+- A major use case for bonding in containers is network redundancy of an application in the case of network device or path failure and unavailability. For more information, refer to [network redundancy using interface bonding](https://www.howtoforge.com/tutorial/how-to-configure-high-availability-and-network-bonding-on-linux/)
+
+For more information on the bonding driver, refer to [kernel doc](https://www.kernel.org/doc/Documentation/networking/bonding.txt)
 
 ## Build
 
@@ -41,7 +42,8 @@ The binary should be placed at /opt/cni/bin on all nodes on which bonding will t
 ### Standalone operation
 
 Given the following network configuration:
-```json
+
+```shell
 # cat > /etc/cni/net.d/00-flannel-bonding.conf <<EOF
 {
 	"name": "mynet",
@@ -63,35 +65,39 @@ Given the following network configuration:
 }
 EOF
 ```
+
 Note: In this example configuration above required &quot;ipam&quot; is provided by flannel plugin implicitly.
 
-## Integration with Multus, SRIOV CNI and SRIOV Device Plugin
+## Integration with Multus, SR-IOV CNI and SR-IOV Device Plugin
 
-Users can take advantage of [Multus](https://github.com/intel/multus-cni) to enable adding multiple interfaces to a K8s Pod. The [SRIOV CNI](https://github.com/intel/sriov-cni) plugin allows a SRIOV VF (Virtual Function) to be added to a container. Additionally the [SRIOV Device Plugin](https://github.com/intel/sriov-network-device-plugin) allows Kubelet to manage SRIOV virtual functions. This example shows how Bond CNI could be used in conjunction with these plugins to handle more advanced use cases e.g, high performance container networking solution for NFV environment. Specifically the below functionality shows how to set up failover for SR-IOV interfaces in Kubernetes.
-This configuration is only applicable to SRIOV VFs using the kernel driver. Userspace driver VFs - such as those used in DPDK workloads - can not be bonded with the Bond CNI.
+Users can take advantage of [Multus](https://github.com/intel/multus-cni) to enable adding multiple interfaces to a Kubernetes pod. The [SR-IOV CNI](https://github.com/intel/sriov-cni) plugin allows a SR-IOV VF (Virtual Function) to be added to a container. Additionally the [SR-IOV Device Plugin](https://github.com/intel/sriov-network-device-plugin) allows Kubelet to manage SR-IOV virtual functions. This example shows how Bond CNI could be used in conjunction with these plugins to handle more advanced use cases e.g, high performance container networking solution for NFV environment. Specifically the below functionality shows how to set up failover for SR-IOV interfaces in Kubernetes.
+This configuration is only applicable to SR-IOV VFs using the kernel driver. Userspace driver VFs&mdash;such as those used in DPDK workloads&mdash;can not be bonded with the Bond CNI.
+
 - [Multus CNI- Multi Network plugin](https://github.com/intel/multus-cni)
-- [SRIOV CNI](https://github.com/intel/sriov-cni)
-- [SRIOV Network Device Plugin](https://github.com/intel/sriov-network-device-plugin)
+- [SR-IOV CNI](https://github.com/intel/sriov-cni)
+- [SR-IOV Network Device Plugin](https://github.com/intel/sriov-network-device-plugin)
 
-Configuration is based on the Multus CRD Network Attachment Definition. Please follow the configuration details in the link: [Usage with Kubernetes CRD based Network Objects](https://github.com/intel/multus-cni/blob/master/doc/configuration.md#configuration-example)
+Configuration is based on the Multus CRD Network Attachment Definition. Refer to the configuration details at [Usage with Kubernetes CRD based Network Objects](https://github.com/intel/multus-cni/blob/master/doc/configuration.md#configuration-example).
 
-For more information and advanced use refer to the [Network Custom Resource standard](https://docs.google.com/document/d/1TW3P4c8auWwYy-w_5afIPDcGNLK3LZf0m14943eVfVg/edithttps://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ/edit#heading=h.hylsbqoj5fxd) for more details.
+For more information and advanced use refer to the [Network Custom Resource standard](https://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ/edit#heading=h.hylsbqoj5fxd) for more details.
 
-### Bonded failover for SRIOV Workloads 
+### Bonded failover for SR-IOV Workloads 
 
 Prerequisites:
 
-- Multus configured as per the [quick start guide](https://github.com/intel/multus-cni/blob/master/doc/quickstart.md)
+- Multus configured as per the [quick start guide](https://github.com/intel/multus-cni/blob/master/doc/quickstart.md).
 
-- SRIOV CNI and Multus CNI placed in /opt/cni/bin
+- SR-IOV CNI and Multus CNI placed in `/opt/cni/bin`.
 
-- SRIOV Device Plugin running as a Daemonset on the cluster
+- SR-IOV Device Plugin running as a daemon set on the cluster.
 
-The SRIOV Device Plugin will need to be configured to ensure the VFs in the pod are from different network cards. This is important because failover requires that the bonded interface still have connection even if one of the slave interfaces goes down. If both virtual functions are from the same root any connection issues on the physical interface and card will be reflected in both VFs at the same time.
+The SR-IOV Device Plugin needs to be configured to ensure the VFs in the pod are from different network interface controllers.
+This is important because failover requires that the bonded interface still have a connection even if one of the links goes down.
+Otherwise, if both virtual functions are from the same root, any connection issues on the physical interface and card will be reflected in both VFs at the same time.
 
-An example SRIOV config - which works on the basis of physical interface names- is:
+An example SR-IOV config&mdash;which works on the basis of physical interface names&mdash;follows:
 
-```
+```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -123,13 +129,17 @@ data:
     }
 
 ```
-In the above specific PF names will have to be entered - based on available PFs in the cluster - in order to make the selectors pick up the correct VFs. The other selectors in the above configuration are identical.
-Note that SRIOV device plugin only picks up new configuration at startup - so if the daemonset was previously running the pods will have to be killed and redeployed before this is advertised again.
+
+In the preceding manifest, specific PF names must be specified&mdash;based on available PFs in the cluster&mdash;in order to make the selectors pick up the correct VFs.
+The other selectors in the preceding manifest are identical.
+Note that SR-IOV device plugin only picks up a new configuration at startup.
+If the daemon set was previously running, the pods will have to be killed and redeployed before this is advertised again.
 
 ## Steps for deployment
-1) Deploy Network Attach Definiton for SRIOV
 
-```
+1) Add a network attachment definition for SR-IOV:
+
+```yaml
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
@@ -144,8 +154,9 @@ spec:
 }'
 ```
 
-We will create a separate - but equivalent except for naming - SRIOV network attach definition. This allows us to keep our definitions seperate for our two Physical Function pools as definited above.
-```
+We will create a separate&mdash;but equivalent except for naming&mdash;SR-IOV network attachment definition. This allows us to keep our definitions separate for our two Physical Function pools as defined above.
+
+```yaml
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
@@ -159,8 +170,10 @@ spec:
   "spoofchk":"off"
 }'
 ```
-2) Deploy Network Attach Definition for Bond CNI:
-```
+
+2) Add a network attachment definition for the bond CNI:
+
+```yaml
 apiVersion: "k8s.cni.cncf.io/v1"
 kind: NetworkAttachmentDefinition
 metadata:
@@ -189,11 +202,12 @@ spec:
   }
 }'
 ```
-Note above the `"linksInContainer": true` flag. This tells the Bond CNI that the interfaces we're looking for are to be found inside the container. By default it will look for these interfaces on the host which does not work for integration with SRIOV/Multus.
 
-3) Deploy a pod which requests two SRIOV networks, one from each PF, and one bonded network.
+Note above the `"linksInContainer": true` field. This field indicates to the bond CNI that the interfaces we're looking for are to be found inside the container. By default the bond CNI looks for these interfaces on the host&mdash;which does not work for integration with SR-IOV and Multus.
 
-```
+3) Deploy a pod that requests two SR-IOV networks, one from each PF, and one bonded network:
+
+```yaml
 apiVersion: v1
 kind: Pod
 metadata:
@@ -228,19 +242,21 @@ spec:
         intel.com/intel_sriov_PF_2: '1'
 ```
 
-The order in the request annotation `k8s.v1.cni.cncf.io/networks: sriov-net1, sriov-net2, bond-net1` is important as it is the same order in which networks will be added. In the above spec we add one SRIOV network, then we add another identically configured SRIOV network from our second SRIOV VF pool. Multus will give these networks the names net1 and net2 respectively.
+The order in the request annotation `k8s.v1.cni.cncf.io/networks: sriov-net1, sriov-net2, bond-net1` is important as it is the same order in which networks will be added. In the above spec we add one SR-IOV network, then we add another identically configured SR-IOV network from our second SR-IOV VF pool. Multus assigns these networks the names `net1` and `net2` respectively.
 
-Next the bond-net1 network is created - using interfaces net1 and net2. If bond is created before the SRIOV networks the CNI will not be able to find the interfaces in the container.
+Next, the `bond-net1` network is created. The network uses interfaces `net1` and `net2`. If the bond is created before the SR-IOV networks, the CNI will not be able to find the interfaces in the container.
 
-The name of each interface can be set manually in the annotation according to the [CRD Spec](https://docs.google.com/document/d/1TW3P4c8auWwYy-w_5afIPDcGNLK3LZf0m14943eVfVg/edithttps://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ/edit#heading=h.hylsbqoj5fxd). Changing the names applied in the annotation configuration requires matching changes to be made in the bond network attachment definition. 
+The name of each interface can be set manually in the annotation according to the [CRD Spec](https://docs.google.com/document/d/1Ny03h6IDVy_e_vmElOqR7UdTPAG_RNydhVE1Kx54kFQ/edit#heading=h.hylsbqoj5fxd). Changing the names applied in the annotation configuration requires matching changes to be made in the bond network attachment definition. 
 
 After deploying the above pod spec on Kubernetes running the following command:
 
-```kubectl exec -it test-pod -- ip a```
-
-Will result in  output like:
-
+```shell
+kubectl exec -it test-pod -- ip a
 ```
+
+Will result in output like the following:
+
+```text
 1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN qlen 1000
     link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
     inet 127.0.0.1/8 scope host lo
@@ -259,4 +275,4 @@ Will result in  output like:
     link/ether 9e:23:69:42:fb:8a brd ff:ff:ff:ff:ff:ff
 ```
 
-We have three new interfaces added to our pod - net1 and net2 are SRIOV interfaces while bond0 is the bond over the two of them. Net1 and Net2 don't require IP addresses - and this can be changed in their CRD.
+We have three new interfaces added to our pod: `net1` and `net2` are SR-IOV interfaces while `bond0` is the bond over the two of them. The `net1` and `net2` interfaces do not require IP addresses&mdash;and this can be changed in their CRD.
