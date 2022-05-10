@@ -27,7 +27,7 @@ import (
 
 	"github.com/containernetworking/cni/pkg/skel"
 	"github.com/containernetworking/cni/pkg/types"
-	"github.com/containernetworking/cni/pkg/types/current"
+	current "github.com/containernetworking/cni/pkg/types/100"
 	"github.com/containernetworking/cni/pkg/version"
 	"github.com/containernetworking/plugins/pkg/ipam"
 	"github.com/containernetworking/plugins/pkg/ns"
@@ -37,7 +37,6 @@ import (
 
 type bondingConfig struct {
 	types.NetConf
-	Name        string                   `json:"ifname"`
 	Mode        string                   `json:"mode"`
 	LinksContNs bool                     `json:"linksInContainer"`
 	FailOverMac int                      `json:"failOverMac"`
@@ -244,7 +243,7 @@ func validateMTU(slaveLinks []netlink.Link, mtu int) error {
 
 	pfLinks, err := netHandle.LinkList()
 	if err != nil {
-		return 	fmt.Errorf("Failed to lookup physical functions links, error: %+v", err)
+		return fmt.Errorf("Failed to lookup physical functions links, error: %+v", err)
 	}
 	for _, pfLink := range pfLinks {
 		vritualFunctions := pfLink.Attrs().Vfs
@@ -255,7 +254,7 @@ func validateMTU(slaveLinks []netlink.Link, mtu int) error {
 			for _, vfLink := range slaveLinks {
 				if bytes.Equal(vf.Mac, vfLink.Attrs().HardwareAddr) {
 					if mtu > pfLink.Attrs().MTU {
-						return 	fmt.Errorf("Invalid MTU (%+v). The requested MTU for bond is bigger than that of the physical function (%+v) owning the slave link (%+v)", mtu, pfLink.Attrs().Name, pfLink.Attrs().MTU)
+						return fmt.Errorf("Invalid MTU (%+v). The requested MTU for bond is bigger than that of the physical function (%+v) owning the slave link (%+v)", mtu, pfLink.Attrs().Name, pfLink.Attrs().MTU)
 					}
 				}
 			}
@@ -264,7 +263,7 @@ func validateMTU(slaveLinks []netlink.Link, mtu int) error {
 	return nil
 }
 
-func createBond(bondConf *bondingConfig, nspath string, ns ns.NetNS) (*current.Interface, error) {
+func createBond(bondName string, bondConf *bondingConfig, nspath string, ns ns.NetNS) (*current.Interface, error) {
 	bond := &current.Interface{}
 
 	// get the namespace from the CNI_NETNS environment variable
@@ -300,9 +299,9 @@ func createBond(bondConf *bondingConfig, nspath string, ns ns.NetNS) (*current.I
 	if bondConf.FailOverMac < 0 || bondConf.FailOverMac > 2 {
 		return nil, fmt.Errorf("FailOverMac mode should be 0, 1 or 2 actual: %+v", bondConf.FailOverMac)
 	}
-	bondLinkObj, err := createBondedLink(bondConf.Name, bondConf.Mode, bondConf.Miimon, bondConf.MTU, bondConf.FailOverMac, netNsHandle)
+	bondLinkObj, err := createBondedLink(bondName, bondConf.Mode, bondConf.Miimon, bondConf.MTU, bondConf.FailOverMac, netNsHandle)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create bonded link (%+v), error: %+v", bondConf.Name, err)
+		return nil, fmt.Errorf("Failed to create bonded link (%+v), error: %+v", bondName, err)
 	}
 
 	err = attachLinksToBond(bondLinkObj, linkObjectsToBond, netNsHandle)
@@ -314,7 +313,7 @@ func createBond(bondConf *bondingConfig, nspath string, ns ns.NetNS) (*current.I
 		return nil, fmt.Errorf("Failed to set bond link UP, error: %v", err)
 	}
 
-	bond.Name = bondConf.Name
+	bond.Name = bondName
 
 	// Re-fetch interface to get all properties/attributes
 	contBond, err := netNsHandle.LinkByName(bond.Name)
@@ -342,18 +341,17 @@ func cmdAdd(args *skel.CmdArgs) error {
 	}
 	defer netns.Close()
 
-	if bondConf.Name == "" {
-		bondConf.Name = args.IfName
-	}
-
-	bondInterface, err := createBond(bondConf, args.Netns, netns)
+	bondInterface, err := createBond(args.IfName, bondConf, args.Netns, netns)
 	if err != nil {
 		return err
 	}
 
+	// Initialize an L2 default result.
 	result := &current.Result{
 		CNIVersion: cniVersion,
+		Interfaces: []*current.Interface{bondInterface},
 	}
+
 	// run the IPAM plugin and get back the config to apply
 	if bondConf.IPAM.Type != "" {
 		r, err := ipam.ExecAdd(bondConf.IPAM.Type, args.StdinData)
@@ -361,23 +359,24 @@ func cmdAdd(args *skel.CmdArgs) error {
 			return err
 		}
 		// Convert whatever the IPAM result was into the current Result type
-		result, err := current.NewResultFromResult(r)
+		ipamResult, err := current.NewResultFromResult(r)
 		if err != nil {
 			return err
 		}
 
-		if len(result.IPs) == 0 {
+		if len(ipamResult.IPs) == 0 {
 			return errors.New("IPAM plugin returned missing IP config")
 		}
-		for _, ipc := range result.IPs {
+		for _, ipc := range ipamResult.IPs {
 			// All addresses belong to the vlan interface
 			ipc.Interface = current.Int(0)
 		}
 
-		result.Interfaces = []*current.Interface{bondInterface}
+		result.IPs = ipamResult.IPs
+		result.Routes = ipamResult.Routes
 
 		err = netns.Do(func(_ ns.NetNS) error {
-			return ipam.ConfigureIface(bondConf.Name, result)
+			return ipam.ConfigureIface(args.IfName, result)
 		})
 		if err != nil {
 			return err
@@ -386,8 +385,6 @@ func cmdAdd(args *skel.CmdArgs) error {
 		result.DNS = bondConf.DNS
 
 	}
-
-	result.Interfaces = []*current.Interface{bondInterface}
 
 	return types.PrintResult(result, cniVersion)
 
@@ -425,16 +422,12 @@ func cmdDel(args *skel.CmdArgs) error {
 	}
 	defer netNsHandle.Delete()
 
-	if bondConf.Name == "" {
-		bondConf.Name = args.IfName
-	}
-
 	linkObjectsToDeattach, err := getLinkObjectsFromConfig(bondConf, netNsHandle)
 	if err != nil {
 		return fmt.Errorf("Failed to retrieve link objects from configuration file (%+v), error: %+v", bondConf, err)
 	}
 
-	linkObjToDel, err := checkLinkExists(bondConf.Name, netNsHandle)
+	linkObjToDel, err := checkLinkExists(args.IfName, netNsHandle)
 	if err != nil {
 		return fmt.Errorf("Failed to find bonded link (%+v), error: %+v", bondConf.Name, err)
 	}
