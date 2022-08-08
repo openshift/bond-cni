@@ -15,8 +15,12 @@
 package main
 
 import (
+	"fmt"
 	"github.com/containernetworking/cni/pkg/skel"
-	"github.com/containernetworking/cni/pkg/types/100"
+	types020 "github.com/containernetworking/cni/pkg/types/020"
+	types040 "github.com/containernetworking/cni/pkg/types/040"
+	types100 "github.com/containernetworking/cni/pkg/types/100"
+
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
 	. "github.com/onsi/ginkgo"
@@ -25,9 +29,25 @@ import (
 )
 
 const (
-    IfName string = "bond0"
-    Slave1 string = "net1"
-    Slave2 string = "net2"
+	IfName string = "bond0"
+	Slave1 string = "net1"
+	Slave2 string = "net2"
+	Config string = `{
+			"name": "bond",
+			"type": "bond",
+			"cniVersion": "%s",
+			"mode": "%s",
+			"failOverMac": 1,
+			"linksInContainer": true,
+			"miimon": "100",
+			"mtu": 1400,
+			"links": [
+				{"name": "net1"},
+				{"name": "net2"}
+			]
+		}`
+	ActiveBackupMode = "active-backup"
+	BalanceTlbMode   = "balance-tlb"
 )
 
 var Slaves = []string{Slave1, Slave2}
@@ -63,27 +83,11 @@ var _ = Describe("tuning plugin", func() {
 	})
 
 	It("verifies a plugin is added and deleted correctly", func() {
-		conf := []byte(`{
-			"name": "bond",
-			"type": "bond",
-			"cniVersion": "0.3.1",
-			"ifname": "bond0",
-			"mode": "active-backup",
-			"failOverMac": 1,
-			"linksInContainer": true,
-			"miimon": "100",
-			"mtu": 1400,
-			"links": [
-				{"name": "net1"},
-				{"name": "net2"}
-			]
-		}`)
-
 		args := &skel.CmdArgs{
 			ContainerID: "dummy",
 			Netns:       podNS.Path(),
 			IfName:      IfName,
-			StdinData:   conf,
+			StdinData:   []byte(fmt.Sprintf(Config, "0.3.1", ActiveBackupMode)),
 		}
 
 		err := podNS.Do(func(ns.NetNS) error {
@@ -106,7 +110,7 @@ var _ = Describe("tuning plugin", func() {
 			Expect(err).NotTo(HaveOccurred())
 			bond := link.(*netlink.Bond)
 			Expect(bond.Attrs().MTU).To(Equal(1400))
-			Expect(bond.Mode.String()).To(Equal("active-backup"))
+			Expect(bond.Mode.String()).To(Equal(ActiveBackupMode))
 			Expect(bond.Miimon).To(Equal(100))
 
 			By("validating the bond slaves are configured correctly")
@@ -123,6 +127,144 @@ var _ = Describe("tuning plugin", func() {
 			Expect(err).NotTo(HaveOccurred())
 			_, err = netlink.LinkByName(IfName)
 			Expect(err).To(HaveOccurred())
+			return nil
+		})
+		Expect(err).NotTo(HaveOccurred())
+	})
+
+	It("verifies the plugin returns correct results for CNI versions 0.3.0, 0.3.1, 0.4.0", func() {
+		for _, version := range []string{"0.3.0", "0.3.1", "0.4.0"} {
+			args := &skel.CmdArgs{
+				ContainerID: "dummy",
+				Netns:       podNS.Path(),
+				IfName:      IfName,
+				StdinData:   []byte(fmt.Sprintf(Config, version, ActiveBackupMode)),
+			}
+			err := podNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
+
+				By(fmt.Sprintf("creating the plugin with config in version %s", version))
+				r, _, err := testutils.CmdAddWithArgs(args, func() error {
+					return cmdAdd(args)
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				By(fmt.Sprintf("expecting the result version to be %s", version))
+				result, ok := r.(*types040.Result)
+				Expect(ok).To(BeTrue())
+				Expect(result.CNIVersion).To(Equal(version))
+				Expect(len(result.Interfaces)).To(Equal(1))
+				Expect(result.Interfaces[0].Name).To(Equal("bond0"))
+
+				By("deleting plugin")
+				err = testutils.CmdDel(podNS.Path(),
+					args.ContainerID, "", func() error { return cmdDel(args) })
+				Expect(err).NotTo(HaveOccurred())
+				return nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
+	})
+
+	It("verifies the plugin returns correct results for CNI versions 1.0.0", func() {
+		for _, version := range []string{"1.0.0"} {
+			args := &skel.CmdArgs{
+				ContainerID: "dummy",
+				Netns:       podNS.Path(),
+				IfName:      IfName,
+				StdinData:   []byte(fmt.Sprintf(Config, version, ActiveBackupMode)),
+			}
+			err := podNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
+
+				By(fmt.Sprintf("creating the plugin with config in version %s", version))
+				r, _, err := testutils.CmdAddWithArgs(args, func() error {
+					return cmdAdd(args)
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				By(fmt.Sprintf("expecting the result version to be %s", version))
+				result, ok := r.(*types100.Result)
+				Expect(ok).To(BeTrue())
+				Expect(result.CNIVersion).To(Equal(version))
+				Expect(len(result.Interfaces)).To(Equal(1))
+				Expect(result.Interfaces[0].Name).To(Equal("bond0"))
+
+				By("deleting plugin")
+				err = testutils.CmdDel(podNS.Path(),
+					args.ContainerID, "", func() error { return cmdDel(args) })
+				Expect(err).NotTo(HaveOccurred())
+				return nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
+	})
+
+	It("verifies the plugin returns correct results for CNI versions 0.2.0, 0.1.0", func() {
+		for _, version := range []string{"0.2.0", "0.1.0"} {
+			args := &skel.CmdArgs{
+				ContainerID: "dummy",
+				Netns:       podNS.Path(),
+				IfName:      IfName,
+				StdinData:   []byte(fmt.Sprintf(Config, version, ActiveBackupMode)),
+			}
+			err := podNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
+
+				By(fmt.Sprintf("creating the plugin with config in version %s", version))
+				r, _, err := testutils.CmdAddWithArgs(args, func() error {
+					return cmdAdd(args)
+				})
+				Expect(err).NotTo(HaveOccurred())
+
+				By(fmt.Sprintf("expecting the result version to be %s", version))
+				result, ok := r.(*types020.Result)
+				Expect(ok).To(BeTrue())
+				Expect(result.CNIVersion).To(Equal(version))
+				Expect(result.IP4).To(BeNil())
+				Expect(result.IP6).To(BeNil())
+
+				By("deleting plugin")
+				err = testutils.CmdDel(podNS.Path(),
+					args.ContainerID, "", func() error { return cmdDel(args) })
+				Expect(err).NotTo(HaveOccurred())
+				return nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
+	})
+
+	It("verifies the plugin copes with duplicated macs in balance-tlb mode", func() {
+		args := &skel.CmdArgs{
+			ContainerID: "dummy",
+			Netns:       podNS.Path(),
+			IfName:      IfName,
+			StdinData:   []byte(fmt.Sprintf(Config, "0.3.1", BalanceTlbMode)),
+		}
+
+		err := podNS.Do(func(ns.NetNS) error {
+			defer GinkgoRecover()
+
+			slave1, err := netlink.LinkByName(Slave1)
+			Expect(err).NotTo(HaveOccurred())
+
+			slave2, err := netlink.LinkByName(Slave2)
+			Expect(err).NotTo(HaveOccurred())
+
+			err = netlink.LinkSetHardwareAddr(slave2, slave1.Attrs().HardwareAddr)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("creating the plugin")
+			r, _, err := testutils.CmdAddWithArgs(args, func() error {
+				return cmdAdd(args)
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			By("checking the bond was created")
+			result, err := types100.GetResult(r)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(len(result.Interfaces)).To(Equal(1))
+			Expect(result.Interfaces[0].Name).To(Equal(IfName))
 			return nil
 		})
 		Expect(err).NotTo(HaveOccurred())
