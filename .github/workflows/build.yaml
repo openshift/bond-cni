@@ -1,22 +1,38 @@
 name: build
 
-on: [push, pull_request]
-jobs:
-  build:
-    name: build
-    strategy:
-      matrix:
-        go-version: [1.16, 1.17, 1.18]
-    runs-on:  ubuntu-latest
-    steps:
+on: ["push", "pull_request"]
 
-      - name: Set up Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v2
+env:
+  GO_VERSION: "1.19"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: setup go
+        uses: actions/setup-go@v4
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
+
+      - uses: golangci/golangci-lint-action@v3
+        with:
+          args: -v
+
+  build:
+    name: build
+    runs-on:  ubuntu-latest
+    steps:
+      - name: set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3
 
       - name: Build
         run: make build-bin
@@ -25,14 +41,13 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-
-      - name: Set up Go ${{ matrix.go-version }}
-        uses: actions/setup-go@v2
+      - name: setup go
+        uses: actions/setup-go@v4
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ${{ env.GO_VERSION }}
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Test
         run: make test

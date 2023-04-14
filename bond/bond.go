@@ -17,7 +17,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -195,7 +194,7 @@ func setLinksinNetNs(bondConf *bondingConfig, nspath string, releaseLinks bool) 
 		return fmt.Errorf("failed to get init netns: %v", err)
 	}
 
-	if releaseLinks == true {
+	if releaseLinks {
 		if err := netNs.Set(); err != nil {
 			return fmt.Errorf("failed to enter netns %q: %v", netNs, err)
 		}
@@ -214,7 +213,7 @@ func setLinksinNetNs(bondConf *bondingConfig, nspath string, releaseLinks bool) 
 				return fmt.Errorf("failed to down link interface %q: %v", linkName, err)
 			}
 
-			if releaseLinks == true { // move link inteface to network netns
+			if releaseLinks { // move link inteface to network netns
 				if err = netlink.LinkSetNsFd(link, int(curnetNs.Fd())); err != nil {
 					return fmt.Errorf("failed to move link interface to host netns %q: %v", linkName, err)
 				}
@@ -227,51 +226,6 @@ func setLinksinNetNs(bondConf *bondingConfig, nspath string, releaseLinks bool) 
 		}
 	} else {
 		return fmt.Errorf("Bonding requires at least two links, we have %+v", len(linkNames))
-	}
-
-	return nil
-}
-
-func validateMTU(slaveLinks []netlink.Link, mtu int) error {
-	// if not specified set MTU to default
-	if mtu == 0 {
-		mtu = 1500
-	}
-
-	if mtu < 68 {
-		return fmt.Errorf("Invalid bond MTU value (%+v), should be 68 or bigger", mtu)
-	}
-	netHandle, err := netlink.NewHandle()
-	if err != nil {
-		return fmt.Errorf("Failed to create a new handle, error: %+v", err)
-	}
-	defer netHandle.Delete()
-
-	// handle the nics like macvlan, ipvlan, etc..
-	for _, link := range slaveLinks {
-		if mtu > link.Attrs().MTU {
-			return fmt.Errorf("Invalid MTU (%+v). The requested MTU for bond is bigger than that of the slave link (%+v), slave MTU (%+v)", mtu, link.Attrs().Name, link.Attrs().MTU)
-		}
-	}
-
-	pfLinks, err := netHandle.LinkList()
-	if err != nil {
-		return fmt.Errorf("Failed to lookup physical functions links, error: %+v", err)
-	}
-	for _, pfLink := range pfLinks {
-		vritualFunctions := pfLink.Attrs().Vfs
-		if vritualFunctions == nil || len(vritualFunctions) == 0 {
-			continue
-		}
-		for _, vf := range vritualFunctions {
-			for _, vfLink := range slaveLinks {
-				if bytes.Equal(vf.Mac, vfLink.Attrs().HardwareAddr) {
-					if mtu > pfLink.Attrs().MTU {
-						return fmt.Errorf("Invalid MTU (%+v). The requested MTU for bond is bigger than that of the physical function (%+v) owning the slave link (%+v)", mtu, pfLink.Attrs().Name, pfLink.Attrs().MTU)
-					}
-				}
-			}
-		}
 	}
 
 	return nil
@@ -292,9 +246,9 @@ func createBond(bondName string, bondConf *bondingConfig, nspath string, ns ns.N
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create a new handle at netNs (%+v), error: %+v", netNs, err)
 	}
-	defer netNsHandle.Delete()
+	defer netNsHandle.Close()
 
-	if bondConf.LinksContNs != true {
+	if !bondConf.LinksContNs {
 		if err := setLinksinNetNs(bondConf, nspath, false); err != nil {
 			return nil, fmt.Errorf("Failed to move the links (%+v) in container network namespace, error: %+v", bondConf.Links, err)
 		}
@@ -305,7 +259,7 @@ func createBond(bondName string, bondConf *bondingConfig, nspath string, ns ns.N
 		return nil, fmt.Errorf("Failed to retrieve link objects from configuration file (%+v), error: %+v", bondConf, err)
 	}
 
-	err = validateMTU(linkObjectsToBond, bondConf.MTU)
+	err = util.ValidateMTU(linkObjectsToBond, bondConf.MTU)
 	if err != nil {
 		return nil, err
 	}
@@ -434,7 +388,7 @@ func cmdDel(args *skel.CmdArgs) error {
 	if err != nil {
 		return fmt.Errorf("Failed to create a new handle at netNs (%+v), error: %+v", netNs, err)
 	}
-	defer netNsHandle.Delete()
+	defer netNsHandle.Close()
 
 	linkObjectsToDeattach, err := getLinkObjectsFromConfig(bondConf, netNsHandle)
 	if err != nil {
@@ -455,12 +409,16 @@ func cmdDel(args *skel.CmdArgs) error {
 		return fmt.Errorf("Failed to deattached links from bond, error: %+v", err)
 	}
 
+	if err = util.HandleMacDuplicates(linkObjectsToDeattach, netNsHandle); err != nil {
+		return fmt.Errorf("Failed to validate deattached links macs, error: %+v", err)
+	}
+
 	err = netNsHandle.LinkDel(linkObjToDel)
 	if err != nil {
 		return fmt.Errorf("Failed to delete bonded link (%+v), error: %+v", linkObjToDel.Attrs().Name, err)
 	}
 
-	if bondConf.LinksContNs != true {
+	if !bondConf.LinksContNs {
 		if err := setLinksinNetNs(bondConf, args.Netns, true); err != nil {
 			return fmt.Errorf("Failed set links (%+v) in host network namespace, error: %+v", bondConf.Links, err)
 		}
