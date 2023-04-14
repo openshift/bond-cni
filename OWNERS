@@ -2,11 +2,11 @@ reviewers:
 - zshi-redhat
 - fedepaol
 - SchSeba
-- mmirecki
+- mlguerrero12
 approvers:
 - zshi-redhat
 - fedepaol
 - SchSeba
-- mmirecki
+- mlguerrero12
 component: "Networking"
 subcomponent: "multus"
