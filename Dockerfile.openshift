@@ -8,7 +8,7 @@ WORKDIR /go/src/github.com/openshift/bond-cni
 COPY . .
 RUN ./build.sh
 
-FROM registry.ci.openshift.org/ocp/4.16:base
+FROM registry.ci.openshift.org/ocp/4.16:base-rhel9
 LABEL io.k8s.display-name="bond-cni" \
     io.k8s.description="This is an image containing the bond-cni executable" \
     io.openshift.tags="openshift"
