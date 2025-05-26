@@ -32,26 +32,12 @@ import (
 )
 
 const (
-	IfName string = "bond0"
-	Slave1 string = "net1"
-	Slave2 string = "net2"
-	Config string = `{
-			"name": "bond",
-			"type": "bond",
-			"cniVersion": "%s",
-			"mode": "%s",
-			"failOverMac": %d,
-			"linksInContainer": %s,
-			"miimon": "100",
-			"mtu": %s,
-			"links": [
-				{"name": "net1"},
-				{"name": "net2"}
-			]
-		}`
-	ActiveBackupMode = "active-backup"
-	BalanceTlbMode   = "balance-tlb"
-	DefaultMTU       = 1400
+	IfName           string = "bond0"
+	Slave1           string = "net1"
+	Slave2           string = "net2"
+	ActiveBackupMode        = "active-backup"
+	BalanceTlbMode          = "balance-tlb"
+	DefaultMTU              = 1400
 )
 
 var Slaves = []string{Slave1, Slave2}
@@ -67,8 +53,26 @@ var _ = Describe("bond plugin", func() {
 	})
 
 	When("links are in container`s network namespace at initial state (meaning linksInContainer is true)", func() {
+		var config string
+
 		BeforeEach(func() {
 			var err error
+
+			config = `{
+			"name": "bond",
+			"type": "bond",
+			"cniVersion": "%s",
+			"mode": "%s",
+			"failOverMac": %d,
+			"linksInContainer": %s,
+			"miimon": "100",
+			"mtu": %s,
+			"links": [
+				{"name": "net1"},
+				{"name": "net2"}
+			]
+		}`
+
 			linksInContainer = true
 			linkAttrs := []netlink.LinkAttrs{
 				{Name: Slave1},
@@ -81,7 +85,7 @@ var _ = Describe("bond plugin", func() {
 				ContainerID: "dummy",
 				Netns:       podNS.Path(),
 				IfName:      IfName,
-				StdinData:   []byte(fmt.Sprintf(Config, "1.0.0", ActiveBackupMode, 1, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU))),
+				StdinData:   []byte(fmt.Sprintf(config, "1.0.0", ActiveBackupMode, 1, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU))),
 			}
 		})
 
@@ -170,7 +174,7 @@ var _ = Describe("bond plugin", func() {
 
 		DescribeTable("verifies the plugin returns correct results for supported tested versions", func(version string) {
 
-			args.StdinData = []byte(fmt.Sprintf(Config, version, ActiveBackupMode, 1, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU)))
+			args.StdinData = []byte(fmt.Sprintf(config, version, ActiveBackupMode, 1, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU)))
 
 			By(fmt.Sprintf("creating the plugin with config in version %s", version))
 			r, _, err := testutils.CmdAddWithArgs(args, func() error {
@@ -195,7 +199,7 @@ var _ = Describe("bond plugin", func() {
 		)
 
 		It("verifies the plugin copes with duplicated macs in balance-tlb mode", func() {
-			args.StdinData = []byte(fmt.Sprintf(Config, "0.3.1", BalanceTlbMode, 1, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU)))
+			args.StdinData = []byte(fmt.Sprintf(config, "0.3.1", BalanceTlbMode, 1, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU)))
 
 			err := podNS.Do(func(ns.NetNS) error {
 				defer GinkgoRecover()
@@ -302,7 +306,7 @@ var _ = Describe("bond plugin", func() {
 				ContainerID: "dummy",
 				Netns:       podNS.Path(),
 				IfName:      IfName,
-				StdinData:   []byte(fmt.Sprintf(Config, "1.0.0", ActiveBackupMode, 0, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU))),
+				StdinData:   []byte(fmt.Sprintf(config, "1.0.0", ActiveBackupMode, 0, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU))),
 			}
 
 			r, _, err := testutils.CmdAddWithArgs(args, func() error {
@@ -362,8 +366,26 @@ var _ = Describe("bond plugin", func() {
 		const Slave1Mtu = 1000
 		const Slave2Mtu = 800
 
+		var config string
+
 		BeforeEach(func() {
 			var err error
+
+			config = `{
+			"name": "bond",
+			"type": "bond",
+			"cniVersion": "%s",
+			"mode": "%s",
+			"failOverMac": %d,
+			"linksInContainer": %s,
+			"miimon": "100",
+			"mtu": %s,
+			"links": [
+				{"name": "net1"},
+				{"name": "net2"}
+			]
+		}`
+
 			linksInContainer = true
 			linkAttrs := []netlink.LinkAttrs{
 				{MTU: Slave1Mtu, Name: Slave1},
@@ -379,7 +401,7 @@ var _ = Describe("bond plugin", func() {
 				ContainerID: "dummy",
 				Netns:       podNS.Path(),
 				IfName:      IfName,
-				StdinData:   []byte(fmt.Sprintf(Config, "0.3.1", ActiveBackupMode, 1, strconv.FormatBool(linksInContainer), bondMTU)),
+				StdinData:   []byte(fmt.Sprintf(config, "0.3.1", ActiveBackupMode, 1, strconv.FormatBool(linksInContainer), bondMTU)),
 			}
 			By("creating the plugin")
 			_, _, err := testutils.CmdAddWithArgs(args, func() error {
@@ -391,9 +413,257 @@ var _ = Describe("bond plugin", func() {
 			Entry("Bond MTU is bigger then all of links MTU", "900"),
 		)
 	})
-	When("links are in the initial network namespace at initial state (meaning linksInContainer is false)", func() {
+	When("all_slaves_active is added to the config", func() {
+		var config string
+
 		BeforeEach(func() {
 			var err error
+
+			config = `{
+			"name": "bond",
+			"type": "bond",
+			"cniVersion": "0.3.1",
+			"mode": "%s",
+			"failOverMac": 1,
+			"linksInContainer": true,
+			"miimon": "100",
+			"mtu": 1400,
+			"links": [
+				{"name": "net1"},
+				{"name": "net2"}
+			],
+            "allSlavesActive": %d
+		}`
+
+			linksInContainer = true
+			linkAttrs := []netlink.LinkAttrs{
+				{Name: Slave1},
+				{Name: Slave2},
+			}
+			podNS, err = testutils.NewNS()
+			Expect(err).NotTo(HaveOccurred())
+			addLinksInNS(podNS, linkAttrs)
+		})
+
+		DescribeTable("Verify all slaves active is properly set", func(allSlavesActive int) {
+			args := &skel.CmdArgs{
+				ContainerID: "dummy",
+				Netns:       podNS.Path(),
+				IfName:      IfName,
+				StdinData:   []byte(fmt.Sprintf(config, ActiveBackupMode, allSlavesActive)),
+			}
+			By("creating the plugin")
+			r, _, err := testutils.CmdAddWithArgs(args, func() error {
+				return cmdAdd(args)
+			})
+
+			if allSlavesActive != 0 && allSlavesActive != 1 {
+				Expect(err).To(HaveOccurred())
+				return
+			}
+			Expect(err).NotTo(HaveOccurred())
+
+			By("validating the returned result is correct")
+			checkAddReturnResult(&r, IfName)
+
+			Expect(err).To(Not(HaveOccurred()))
+
+			err = podNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
+				By("validating the bond interface is configured correctly")
+				link, err := netlink.LinkByName(IfName)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(link.(*netlink.Bond).AllSlavesActive).To(Equal(allSlavesActive))
+				return nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+		},
+			Entry("all_slaves_active is disabled", 0),
+			Entry("all_slaves_active is enabled", 1),
+			Entry("all_slaves_active value is invaled", 2),
+		)
+	})
+
+	When("xmit_hash_policy is added to the config", func() {
+		var config string
+
+		BeforeEach(func() {
+			var err error
+
+			config = `{
+			"name": "bond",
+			"type": "bond",
+			"cniVersion": "0.3.1",
+			"mode": "%s",
+			"failOverMac": 1,
+			"linksInContainer": true,
+			"miimon": "100",
+			"mtu": 1400,
+			"links": [
+				{"name": "net1"},
+				{"name": "net2"}
+			],
+            "xmitHashPolicy": "%s"
+		}`
+
+			linksInContainer = true
+			linkAttrs := []netlink.LinkAttrs{
+				{Name: Slave1},
+				{Name: Slave2},
+			}
+			podNS, err = testutils.NewNS()
+			Expect(err).NotTo(HaveOccurred())
+			addLinksInNS(podNS, linkAttrs)
+		})
+
+		DescribeTable("Verify xmit_hash_policy is properly set", func(xmitHashPolicy string) {
+			args := &skel.CmdArgs{
+				ContainerID: "dummy",
+				Netns:       podNS.Path(),
+				IfName:      IfName,
+				StdinData:   []byte(fmt.Sprintf(config, BalanceTlbMode, xmitHashPolicy)),
+			}
+			By("creating the plugin")
+			r, _, err := testutils.CmdAddWithArgs(args, func() error {
+				return cmdAdd(args)
+			})
+
+			if netlink.StringToBondXmitHashPolicy(xmitHashPolicy) == netlink.BOND_XMIT_HASH_POLICY_UNKNOWN {
+				Expect(err).To(HaveOccurred())
+				return
+			}
+			Expect(err).NotTo(HaveOccurred())
+
+			By("validating the returned result is correct")
+			checkAddReturnResult(&r, IfName)
+
+			Expect(err).To(Not(HaveOccurred()))
+
+			err = podNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
+				By("validating the bond interface is configured correctly")
+				link, err := netlink.LinkByName(IfName)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(link.(*netlink.Bond).XmitHashPolicy).To(Equal(netlink.StringToBondXmitHashPolicy(xmitHashPolicy)))
+				return nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+		},
+			Entry("xmit_hash_policy is layer2", "layer2"),
+			Entry("xmit_hash_policy is layer2+3", "layer2+3"),
+			Entry("xmit_hash_policy is layer3+4", "layer3+4"),
+			Entry("xmit_hash_policy is layer2+3+4 (invalid)", "layer2+3+4"),
+		)
+	})
+
+	When("tlb_dynamic_lb is added to the config", func() {
+		var config string
+
+		BeforeEach(func() {
+			var err error
+
+			config = `{
+			"name": "bond",
+			"type": "bond",
+			"cniVersion": "0.3.1",
+			"mode": "%s",
+			"failOverMac": 1,
+			"linksInContainer": true,
+			"miimon": "100",
+			"mtu": 1400,
+			"links": [
+				{"name": "net1"},
+				{"name": "net2"}
+			],
+            "tlbDynamicLb": %d
+		}`
+
+			linksInContainer = true
+			linkAttrs := []netlink.LinkAttrs{
+				{Name: Slave1},
+				{Name: Slave2},
+			}
+			podNS, err = testutils.NewNS()
+			Expect(err).NotTo(HaveOccurred())
+			addLinksInNS(podNS, linkAttrs)
+		})
+
+		DescribeTable("Verify all tlb_dynamic_lb is properly set", func(tlbDynamicLb int) {
+			args := &skel.CmdArgs{
+				ContainerID: "dummy",
+				Netns:       podNS.Path(),
+				IfName:      IfName,
+				StdinData:   []byte(fmt.Sprintf(config, BalanceTlbMode, tlbDynamicLb)),
+			}
+			By("creating the plugin")
+			r, _, err := testutils.CmdAddWithArgs(args, func() error {
+				return cmdAdd(args)
+			})
+
+			if tlbDynamicLb != 0 && tlbDynamicLb != 1 {
+				Expect(err).To(HaveOccurred())
+				return
+			}
+			Expect(err).NotTo(HaveOccurred())
+
+			By("validating the returned result is correct")
+			checkAddReturnResult(&r, IfName)
+
+			Expect(err).To(Not(HaveOccurred()))
+
+			err = podNS.Do(func(ns.NetNS) error {
+				defer GinkgoRecover()
+				By("validating the bond interface is configured correctly")
+				link, err := netlink.LinkByName(IfName)
+				Expect(err).NotTo(HaveOccurred())
+
+				Expect(link.(*netlink.Bond).TlbDynamicLb).To(Equal(tlbDynamicLb))
+				return nil
+			})
+			Expect(err).NotTo(HaveOccurred())
+		},
+			Entry("tlb_dynamic_lb is disabled", 0),
+			Entry("tlb_dynamic_lb is enabled", 1),
+			Entry("tlb_dynamic_lb value is invalid", 2),
+		)
+
+		It("should fail if mode is not balance-tlb", func() {
+			args := &skel.CmdArgs{
+				ContainerID: "dummy",
+				Netns:       podNS.Path(),
+				IfName:      IfName,
+				StdinData:   []byte(fmt.Sprintf(config, ActiveBackupMode, 0)),
+			}
+			By("creating the plugin")
+			_, _, err := testutils.CmdAddWithArgs(args, func() error {
+				return cmdAdd(args)
+			})
+			Expect(err).To(HaveOccurred())
+		})
+	})
+
+	When("links are in the initial network namespace at initial state (meaning linksInContainer is false)", func() {
+		var config string
+		BeforeEach(func() {
+			var err error
+
+			config = `{
+			"name": "bond",
+			"type": "bond",
+			"cniVersion": "%s",
+			"mode": "%s",
+			"failOverMac": %d,
+			"linksInContainer": %s,
+			"miimon": "100",
+			"mtu": %s,
+			"links": [
+				{"name": "net1"},
+				{"name": "net2"}
+			]
+		}`
+
 			linksInContainer = false
 			linkAttrs := []netlink.LinkAttrs{
 				{Name: Slave1},
@@ -415,7 +685,7 @@ var _ = Describe("bond plugin", func() {
 				ContainerID: "dummy",
 				Netns:       podNS.Path(),
 				IfName:      IfName,
-				StdinData:   []byte(fmt.Sprintf(Config, "0.3.1", ActiveBackupMode, 1, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU))),
+				StdinData:   []byte(fmt.Sprintf(config, "0.3.1", ActiveBackupMode, 1, strconv.FormatBool(linksInContainer), strconv.Itoa(DefaultMTU))),
 			}
 			err := initNS.Do(func(ns.NetNS) error {
 				defer GinkgoRecover()
