@@ -16,6 +16,7 @@ package ipam
 
 import (
 	"context"
+
 	"github.com/containernetworking/cni/pkg/invoke"
 	"github.com/containernetworking/cni/pkg/types"
 )
@@ -30,4 +31,8 @@ func ExecCheck(plugin string, netconf []byte) error {
 
 func ExecDel(plugin string, netconf []byte) error {
 	return invoke.DelegateDel(context.TODO(), plugin, netconf, nil)
+}
+
+func ExecStatus(plugin string, netconf []byte) error {
+	return invoke.DelegateStatus(context.TODO(), plugin, netconf, nil)
 }
