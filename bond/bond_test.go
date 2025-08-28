@@ -21,6 +21,7 @@ import (
 	types040 "github.com/containernetworking/cni/pkg/types/040"
 	types100 "github.com/containernetworking/cni/pkg/types/100"
 
+	"github.com/containernetworking/plugins/pkg/netlinksafe"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/containernetworking/plugins/pkg/testutils"
 	. "github.com/onsi/ginkgo/v2"
@@ -125,7 +126,7 @@ var _ = Describe("bond plugin", func() {
 			err = testutils.CmdDel(podNS.Path(),
 				args.ContainerID, "", func() error { return cmdDel(args) })
 			Expect(err).NotTo(HaveOccurred())
-			_, err = netlink.LinkByName(IfName)
+			_, err = netlinksafe.LinkByName(IfName)
 			Expect(err).To(HaveOccurred())
 			return nil
 		})
@@ -182,7 +183,7 @@ var _ = Describe("bond plugin", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("deleting a slave interface")
-			slave, err := netlink.LinkByName(Slave1)
+			slave, err := netlinksafe.LinkByName(Slave1)
 			Expect(err).NotTo(HaveOccurred())
 			err = netlink.LinkDel(slave)
 			Expect(err).NotTo(HaveOccurred())
@@ -346,7 +347,7 @@ var _ = Describe("bond plugin", func() {
 		err := podNS.Do(func(ns.NetNS) error {
 			defer GinkgoRecover()
 
-			slave1, err := netlink.LinkByName(Slave1)
+			slave1, err := netlinksafe.LinkByName(Slave1)
 			Expect(err).NotTo(HaveOccurred())
 
 			slave2, err := netlink.LinkByName(Slave2)
@@ -377,9 +378,9 @@ var _ = Describe("bond plugin", func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("validating the macs are not duplicated")
-			slave1, err = netlink.LinkByName(Slave1)
+			slave1, err = netlinksafe.LinkByName(Slave1)
 			Expect(err).NotTo(HaveOccurred())
-			slave2, err = netlink.LinkByName(Slave2)
+			slave2, err = netlinksafe.LinkByName(Slave2)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(slave1.Attrs().HardwareAddr.String()).NotTo(Equal(slave2.Attrs().HardwareAddr.String()))
 			return nil
