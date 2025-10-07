@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/rand"
 	"fmt"
+
+	"github.com/containernetworking/plugins/pkg/netlinksafe"
 	"github.com/vishvananda/netlink"
 )
 
@@ -16,7 +18,7 @@ func ValidateMTU(slaveLinks []netlink.Link, mtu int) error {
 	if mtu < 68 {
 		return fmt.Errorf("Invalid bond MTU value (%+v), should be 68 or bigger", mtu)
 	}
-	netHandle, err := netlink.NewHandle()
+	netHandle, err := netlinksafe.NewHandle()
 	if err != nil {
 		return fmt.Errorf("Failed to create a new handle, error: %+v", err)
 	}
@@ -51,7 +53,7 @@ func ValidateMTU(slaveLinks []netlink.Link, mtu int) error {
 	return nil
 }
 
-func HandleMacDuplicates(linkObjectsToBond []netlink.Link, netNsHandle *netlink.Handle) error {
+func HandleMacDuplicates(linkObjectsToBond []netlink.Link, netNsHandle *netlinksafe.Handle) error {
 	macsInUse := []string{}
 	var err error
 	for _, link := range linkObjectsToBond {
@@ -76,7 +78,7 @@ func isMacDuplicated(mac string, macsInUse []string) bool {
 	return false
 }
 
-func updateDuplicateMac(link netlink.Link, netNsHandle *netlink.Handle, macsInUse []string) (string, error) {
+func updateDuplicateMac(link netlink.Link, netNsHandle *netlinksafe.Handle, macsInUse []string) (string, error) {
 	newMac, err := generateUnusedMac(macsInUse)
 	if err != nil {
 		return "", err
