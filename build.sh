@@ -18,6 +18,4 @@
 set -e
 
 echo "Building bond-cni plugins"
-
-export GO111MODULE=on
 go build --mod=vendor -o ./bin/bond ./bond/
