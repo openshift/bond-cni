@@ -9,3 +9,4 @@ LABEL io.k8s.display-name="bond-cni" \
     io.openshift.tags="openshift"
 
 COPY --from=rhel9 /go/src/github.com/openshift/bond-cni/bin/bond /bondcni/bond
+RUN mkdir -p /bondcni/rhel9 && ln /bondcni/bond /bondcni/rhel9/bond
