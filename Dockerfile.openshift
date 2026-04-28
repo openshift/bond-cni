@@ -10,3 +10,5 @@ LABEL io.k8s.display-name="bond-cni" \
 
 COPY --from=rhel9 /go/src/github.com/openshift/bond-cni/bin/bond /bondcni/bond
 RUN mkdir -p /bondcni/rhel9 && ln /bondcni/bond /bondcni/rhel9/bond
+# rhel9 binaries are assumed to be compatible with rhel10
+RUN mkdir -p /bondcni/rhel10 && ln /bondcni/bond /bondcni/rhel10/bond
