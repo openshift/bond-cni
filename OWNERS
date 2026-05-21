@@ -2,11 +2,11 @@ reviewers:
 - zshi-redhat
 - fedepaol
 - SchSeba
-- mlguerrero12
+- karampok
 approvers:
 - zshi-redhat
 - fedepaol
 - SchSeba
-- mlguerrero12
+- karampok
 component: "Networking"
 subcomponent: "multus"
