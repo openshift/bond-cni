@@ -7,7 +7,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: setup go
         uses: actions/setup-go@v6
         with:
@@ -21,7 +21,7 @@ jobs:
     name: build
     runs-on:  ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: set up Go
         uses: actions/setup-go@v6
         with:
@@ -34,13 +34,15 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: setup go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Test
+        env:
+          GOTOOLCHAIN: auto
         run: make test
 
   coverage:
@@ -48,7 +50,7 @@ jobs:
     needs: build
     name: coverage
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
